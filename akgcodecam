@@ -1,0 +1,116 @@
+#!/usr/bin/python
+
+import codecs
+
+def read_file (filename, encoding = "utf8"):
+    """Read entire file."""
+
+    return codecs.open (filename, "r", encoding).read ()
+
+lines = read_file("test.gcode").split("\n")
+
+PRINTER_IGNORE = ["M190", "M104", "M109", "G21", "M82", "M107", "M117", "M205", "G0", "M140", "M106", "M84"]
+MODE_ABS = "ABS"
+MODE_REL = "REL"
+
+class Printer:
+    def __init__(self):
+        self.x = None
+        self.y = None
+        self.z = None
+        self.__mode = None
+
+    def handle(self, line):
+        orig_line = line
+        line = line.strip().upper()
+
+        if line.startswith(";") or not line:
+            return
+
+        if " " in line:
+            code, args = line.split(" ", 1)
+        else:
+            code = line
+            args = ""
+
+        def complain_parse(x):
+            raise ValueError("What is '" + x + "'. No idea how to parse this line: " + orig_line)
+
+        def strip_comment(s):
+            return s.split(";", 1)[0]
+
+        def parse_args():
+            return [arg for arg in args and strip_comment(args).split(" ") or [] if arg != ""]
+
+        if code in PRINTER_IGNORE:
+            return
+        elif code == "G90":
+            # Absolute position mode
+            self.__mode = MODE_ABS
+        elif code == "G91":
+            # Relative position mode
+            self.__mode = MODE_REL
+        elif code == "G28":
+            # Home
+            pargs = parse_args()
+            if pargs == []:
+                self.x = 0
+                self.y = 0
+                self.z = 0
+            else:
+                for arg in pargs:
+                    if arg == "X" or arg == "X0":
+                        self.x = 0
+                    elif arg == "Y" or arg == "Y0":
+                        self.y = 0
+                    elif arg == "Z" or arg == "Z0":
+                        self.z = 0
+                    else:
+                        complain_parse(arg)
+        elif code == "G1" or code == "G01" or code == "G1" or code == "G01":
+            # Move
+            pargs = parse_args()
+
+            for arg in pargs:
+                def update(name, oldv):
+                    v = float(arg[1:])
+                    if self.__mode == MODE_ABS:
+                        return v
+                    elif self.__mode == MODE_REL:
+                        return v + oldv
+                    else:
+                        raise ValueError("Mode of operation is not set at line: " + orig_line)
+
+                if arg.startswith("X"):
+                    self.x = update("X", self.x)
+                elif arg.startswith("Y"):
+                    self.y = update("Y", self.y)
+                elif arg.startswith("Z"):
+                    self.z = update("Z", self.z)
+                elif arg.startswith("E") or arg.startswith("F"):
+                    pass
+                else:
+                    complain_parse(arg)
+        elif code == "G92":
+            # Set position (no physical move)
+            pargs = parse_args()
+
+            for arg in pargs:
+                if arg.startswith("X"):
+                    self.x = float(arg[1:])
+                elif arg.startswith("Y"):
+                    self.y = float(arg[1:])
+                elif arg.startswith("Z"):
+                    self.z = float(arg[1:])
+                elif arg.startswith("E"):
+                    pass
+                else:
+                    complain_parse(arg)
+        else:
+            raise ValueError("Unknown G-Code: " + code)
+
+printer = Printer()
+
+for line in lines:
+    printer.handle(line)
+    print((printer.x, printer.y, printer.z))
