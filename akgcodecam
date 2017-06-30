@@ -2,6 +2,8 @@
 
 import codecs
 
+# https://networkx.github.io/documentation/networkx-1.10/reference/generated/networkx.algorithms.shortest_paths.generic.shortest_path.html
+
 def read_file (filename, encoding = "utf8"):
     """Read entire file."""
 
