@@ -15,6 +15,9 @@ PRINTER_IGNORE = ["M190", "M104", "M109", "G21", "M82", "M107", "M117", "M205", 
 MODE_ABS = "ABS"
 MODE_REL = "REL"
 
+# TODO: Class Pos: x, y, z, e
+# TODO: Class PosDelta: dx, dy, dz, de
+
 class Printer:
     def __init__(self):
         self.x = None
