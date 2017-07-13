@@ -11,7 +11,7 @@ def read_file (filename, encoding = "utf8"):
 
 lines = read_file("test.gcode").split("\n")
 
-PRINTER_IGNORE = ["M190", "M104", "M109", "G21", "M82", "M107", "M117", "M205", "G0", "M140", "M106", "M84"]
+PRINTER_IGNORE = ["M190", "M104", "M109", "G21", "M82", "M107", "M117", "M205", "M140", "M106", "M84"]
 MODE_ABS = "ABS"
 MODE_REL = "REL"
 
@@ -73,7 +73,7 @@ class Printer:
                         self.z = 0
                     else:
                         complain_parse(arg)
-        elif code == "G1" or code == "G01" or code == "G1" or code == "G01":
+        elif code == "G1" or code == "G01" or code == "G0" or code == "G00":
             # Move
             pargs = parse_args()
 
@@ -178,25 +178,24 @@ class CamEventDetector(EventDetector):
         super(self.__class__, self).__init__(printer)
 
     def on_init(self):
-        print("Initialized at: " + self._printer.state())
+        print("Initialized.   State" + self._printer.state())
 
     def on_move(self, oldx, oldy, oldz, changex, changey, changez):
-        print("Moved. New state: " + self._printer.state())
+        print("Moved." + "TODO" + "   New state: " + self._printer.state())
 
     def on_print(self, oldx, oldy, oldz, olde, changex, changey, changez, changee):
-        print("Printed. New state: " + self._printer.state())
+        print("Printed.   New state: " + self._printer.state())
 
     def on_retract_move(self, oldx, oldy, oldz, olde, changex, changey, changez, changee):
-        print("Moved and retracted. New state: " + self._printer.state())
+        print("Moved and retracted.   New state: " + self._printer.state())
 
     def on_extrude(self, olde, changee):
-        print("Extruded. New state: " + self._printer.state())
+        print("Extruded.   New state: " + self._printer.state())
 
     def on_retract(self, olde, changee):
-        print("Retracted. New state: " + self._printer.state())
+        print("Retracted.   New state: " + self._printer.state())
 
 event_detector = CamEventDetector(printer)
 
 for line in lines:
     event_detector.handle(line)
-    print((printer.x, printer.y, printer.z, printer.e))
