@@ -20,7 +20,11 @@ class Printer:
         self.x = None
         self.y = None
         self.z = None
+        self.e = None
         self.__mode = None
+
+    def state(self):
+        return "x:" + str(self.x) + " y:" + str(self.y) + " z:" + str(self.z) + " e:" + str(self.e) + " m:" + str(self.__mode)
 
     def handle(self, line):
         orig_line = line
@@ -89,7 +93,9 @@ class Printer:
                     self.y = update("Y", self.y)
                 elif arg.startswith("Z"):
                     self.z = update("Z", self.z)
-                elif arg.startswith("E") or arg.startswith("F"):
+                elif arg.startswith("E"):
+                    self.e = update("E", self.e)
+                elif arg.startswith("F"):
                     pass
                 else:
                     complain_parse(arg)
@@ -105,14 +111,92 @@ class Printer:
                 elif arg.startswith("Z"):
                     self.z = float(arg[1:])
                 elif arg.startswith("E"):
-                    pass
+                    self.e = float(arg[1:])
                 else:
                     complain_parse(arg)
         else:
             raise ValueError("Unknown G-Code: " + code)
 
+class EventDetector(object):
+    def __init__(self, printer):
+        self._printer = printer
+        self.__initialized = False
+
+    def handle(self, line):
+        oldx = self._printer.x
+        oldy = self._printer.y
+        oldz = self._printer.z
+        olde = self._printer.e
+
+        self._printer.handle(line)
+
+        if self.__initialized:
+            changex = self._printer.x - oldx
+            changey = self._printer.y - oldy
+            changez = self._printer.z - oldz
+            changee = self._printer.e - olde
+            if changex != 0 or changey != 0 or changez != 0:
+                if changee == 0:
+                    self.on_move(oldx, oldy, oldz, changex, changey, changez)
+                elif changee > 0:
+                    self.on_print(oldx, oldy, oldz, olde, changex, changey, changez, changee)
+                else:
+                    self.on_retract_move(oldx, oldy, oldz, olde, changex, changey, changez, changee)
+            else:
+                if changee > 0:
+                    self.on_extrude(olde, changee)
+                elif changee < 0:
+                    self.on_retract(olde, changee)
+        else:
+            # Was not initialized, check now
+            if self._printer.x != None and self._printer.y != None and self._printer.z != None and self._printer.e != None:
+                self.__initialized = True
+                self.on_init()
+
+    def on_init():
+        pass
+
+    def on_move(self, oldx, oldy, oldz, changex, changey, changez):
+        pass
+
+    def on_print(self, oldx, oldy, oldz, olde, changex, changey, changez, changee):
+        pass
+
+    def on_retract_move(self, oldx, oldy, oldz, olde, changex, changey, changez, changee):
+        pass
+
+    def on_extrude(self, olde, changee):
+        pass
+
+    def on_retract(self, olde, changee):
+        pass
+
 printer = Printer()
 
+class CamEventDetector(EventDetector):
+    def __init__(self, printer):
+        super(self.__class__, self).__init__(printer)
+
+    def on_init(self):
+        print("Initialized at: " + self._printer.state())
+
+    def on_move(self, oldx, oldy, oldz, changex, changey, changez):
+        print("Moved. New state: " + self._printer.state())
+
+    def on_print(self, oldx, oldy, oldz, olde, changex, changey, changez, changee):
+        print("Printed. New state: " + self._printer.state())
+
+    def on_retract_move(self, oldx, oldy, oldz, olde, changex, changey, changez, changee):
+        print("Moved and retracted. New state: " + self._printer.state())
+
+    def on_extrude(self, olde, changee):
+        print("Extruded. New state: " + self._printer.state())
+
+    def on_retract(self, olde, changee):
+        print("Retracted. New state: " + self._printer.state())
+
+event_detector = CamEventDetector(printer)
+
 for line in lines:
-    printer.handle(line)
-    print((printer.x, printer.y, printer.z))
+    event_detector.handle(line)
+    print((printer.x, printer.y, printer.z, printer.e))
