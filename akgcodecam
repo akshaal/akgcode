@@ -15,8 +15,60 @@ PRINTER_IGNORE = ["M190", "M104", "M109", "G21", "M82", "M107", "M117", "M205", 
 MODE_ABS = "ABS"
 MODE_REL = "REL"
 
-# TODO: Class Pos: x, y, z, e
-# TODO: Class PosDelta: dx, dy, dz, de
+class Pos():
+    def __init__(self, x = None, y = None, z = None, e = None):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.e = e
+
+    def minus(self, other):
+        # TODO: __minus__?
+        return Delta(dx = self.x - other.x, dy = self.y - other.y, dz = self.z - other.z, de = self.e - other.e)
+
+    def is_defined(self):
+        return self.x != None and self.y != None and self.z != None and self.e != None
+
+    def is_home(self):
+        return self.x == 0 and self.y == 0 and self.z == 0
+
+    def update(self, mode, dx = 0, dy = 0, dz = 0, de = 0):
+        if mode == MODE_REL:
+            return Pos(x = self.x + dx, y = self.y + dy, z = self.z + dz, e = self.e + de)
+        elif mode == MODE_ABS:
+            return Pos(x = float(dx), y = float(dy), z = float(dz), e = float(de))
+        else:
+            raise ValueError("Mode of operation is unknown: " + mode)
+
+    def __str__(self):
+        return "Pos(x = " + str(self.x) + ", y = " + str(self.y) + ", z = " + str(self.z) + ", e=" + str(self.e) + ")"
+
+class Delta():
+    def __init__(self, dx = 0, dy = 0, dz = 0, de = 0):
+        self.dx = dx
+        self.dy = dy
+        self.dz = dz
+        self.de = de
+
+    def has_xyz_moves(self):
+        return self.dx != 0 or self.dy != 0 and self.dz != 0
+
+    def is_extrusion(self):
+        return self.de > 0
+
+    def is_retraction(self):
+        return self.de < 0
+
+    def __str__(self):
+        s = "Delta("
+        d = []
+        if self.dx != 0: d.append("dx = " + str(self.dx))
+        if self.dy != 0: d.append("dy = " + str(self.dy))
+        if self.dz != 0: d.append("dz = " + str(self.dz))
+        if self.de != 0: d.append("de = " + str(self.de))
+        s += ", ".join(d)
+        s += ")"
+        return s
 
 class Printer:
     def __init__(self):
