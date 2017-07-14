@@ -15,15 +15,14 @@ PRINTER_IGNORE = ["M190", "M104", "M109", "G21", "M82", "M107", "M117", "M205", 
 MODE_ABS = "ABS"
 MODE_REL = "REL"
 
-class Pos():
+class Pos:
     def __init__(self, x = None, y = None, z = None, e = None):
         self.x = x
         self.y = y
         self.z = z
         self.e = e
 
-    def minus(self, other):
-        # TODO: __minus__?
+    def subtract(self, other):
         return Delta(dx = self.x - other.x, dy = self.y - other.y, dz = self.z - other.z, de = self.e - other.e)
 
     def is_defined(self):
@@ -32,18 +31,29 @@ class Pos():
     def is_home(self):
         return self.x == 0 and self.y == 0 and self.z == 0
 
-    def update(self, mode, dx = 0, dy = 0, dz = 0, de = 0):
+    def copy(self, x = None, y = None, z = None, e = None):
+        return self.update(MODE_ABS, dx = x, dy = y, dz = z, de = e)
+
+    def update(self, mode, dx = None, dy = None, dz = None, de = None):
         if mode == MODE_REL:
-            return Pos(x = self.x + dx, y = self.y + dy, z = self.z + dz, e = self.e + de)
+            nx = dx != None and (self.x + dx) or self.x
+            ny = dy != None and (self.y + dy) or self.y
+            nz = dz != None and (self.z + dz) or self.z
+            ne = de != None and (self.e + de) or self.e
+            return Pos(x = nx, y = ny, z = nz, e = ne)
         elif mode == MODE_ABS:
-            return Pos(x = float(dx), y = float(dy), z = float(dz), e = float(de))
+            nx = dx != None and dx or self.x
+            ny = dy != None and dy or self.y
+            nz = dz != None and dz or self.z
+            ne = de != None and de or self.e
+            return Pos(x = nx, y = ny, z = nz, e = ne)
         else:
             raise ValueError("Mode of operation is unknown: " + mode)
 
     def __str__(self):
         return "Pos(x = " + str(self.x) + ", y = " + str(self.y) + ", z = " + str(self.z) + ", e=" + str(self.e) + ")"
 
-class Delta():
+class Delta:
     def __init__(self, dx = 0, dy = 0, dz = 0, de = 0):
         self.dx = dx
         self.dy = dy
@@ -72,14 +82,11 @@ class Delta():
 
 class Printer:
     def __init__(self):
-        self.x = None
-        self.y = None
-        self.z = None
-        self.e = None
+        self.pos = Pos()
         self.__mode = None
 
     def state(self):
-        return "x:" + str(self.x) + " y:" + str(self.y) + " z:" + str(self.z) + " e:" + str(self.e) + " m:" + str(self.__mode)
+        return str(self.pos) + " m:" + str(self.__mode)
 
     def handle(self, line):
         orig_line = line
@@ -115,17 +122,15 @@ class Printer:
             # Home
             pargs = parse_args()
             if pargs == []:
-                self.x = 0
-                self.y = 0
-                self.z = 0
+                self.pos = self.pos.copy(x = 0, y = 0, z = 0)
             else:
                 for arg in pargs:
                     if arg == "X" or arg == "X0":
-                        self.x = 0
+                        self.pos = self.pos.copy(x = 0)
                     elif arg == "Y" or arg == "Y0":
-                        self.y = 0
+                        self.pos = self.pos.copy(y = 0)
                     elif arg == "Z" or arg == "Z0":
-                        self.z = 0
+                        self.pos = self.pos.copy(z = 0)
                     else:
                         complain_parse(arg)
         elif code == "G1" or code == "G01" or code == "G0" or code == "G00":
@@ -133,23 +138,14 @@ class Printer:
             pargs = parse_args()
 
             for arg in pargs:
-                def update(name, oldv):
-                    v = float(arg[1:])
-                    if self.__mode == MODE_ABS:
-                        return v
-                    elif self.__mode == MODE_REL:
-                        return v + oldv
-                    else:
-                        raise ValueError("Mode of operation is not set at line: " + orig_line)
-
                 if arg.startswith("X"):
-                    self.x = update("X", self.x)
+                    self.pos = self.pos.update(self.__mode, dx = float(arg[1:]))
                 elif arg.startswith("Y"):
-                    self.y = update("Y", self.y)
+                    self.pos = self.pos.update(self.__mode, dy = float(arg[1:]))
                 elif arg.startswith("Z"):
-                    self.z = update("Z", self.z)
+                    self.pos = self.pos.update(self.__mode, dz = float(arg[1:]))
                 elif arg.startswith("E"):
-                    self.e = update("E", self.e)
+                    self.pos = self.pos.update(self.__mode, de = float(arg[1:]))
                 elif arg.startswith("F"):
                     pass
                 else:
@@ -160,13 +156,13 @@ class Printer:
 
             for arg in pargs:
                 if arg.startswith("X"):
-                    self.x = float(arg[1:])
+                    self.pos = self.pos.copy(x = float(arg[1:]))
                 elif arg.startswith("Y"):
-                    self.y = float(arg[1:])
+                    self.pos = self.pos.copy(y = float(arg[1:]))
                 elif arg.startswith("Z"):
-                    self.z = float(arg[1:])
+                    self.pos = self.pos.copy(z = float(arg[1:]))
                 elif arg.startswith("E"):
-                    self.e = float(arg[1:])
+                    self.pos = self.pos.copy(e = float(arg[1:]))
                 else:
                     complain_parse(arg)
         else:
@@ -178,55 +174,50 @@ class EventDetector(object):
         self.__initialized = False
 
     def handle(self, line):
-        oldx = self._printer.x
-        oldy = self._printer.y
-        oldz = self._printer.z
-        olde = self._printer.e
+        oldp = self._printer.pos
 
         self._printer.handle(line)
 
         if self.__initialized:
-            changex = self._printer.x - oldx
-            changey = self._printer.y - oldy
-            changez = self._printer.z - oldz
-            changee = self._printer.e - olde
-            if changex != 0 or changey != 0 or changez != 0:
-                if changee == 0:
-                    self.on_move(oldx, oldy, oldz, changex, changey, changez)
-                elif changee > 0:
-                    self.on_print(oldx, oldy, oldz, olde, changex, changey, changez, changee)
+            delta = self._printer.pos.subtract(oldp)
+
+            if delta.has_xyz_moves():
+                if delta.is_extrusion():
+                    self.on_print(oldp, delta)
+                elif delta.is_retraction():
+                    self.on_retract_move(oldp, delta)
                 else:
-                    self.on_retract_move(oldx, oldy, oldz, olde, changex, changey, changez, changee)
+                    self.on_move(oldp, delta)
             else:
-                if changee > 0:
-                    self.on_extrude(olde, changee)
-                elif changee < 0:
-                    self.on_retract(olde, changee)
+                if delta.is_extrusion():
+                    self.on_extrude(oldp, delta)
+                elif delta.is_retraction():
+                    self.on_retract(oldp, delta)
+                else:
+                    pass # nothing
         else:
             # Was not initialized, check now
-            if self._printer.x != None and self._printer.y != None and self._printer.z != None and self._printer.e != None:
+            if self._printer.pos.is_defined():
                 self.__initialized = True
                 self.on_init()
 
     def on_init():
         pass
 
-    def on_move(self, oldx, oldy, oldz, changex, changey, changez):
+    def on_move(self, oldp, delta):
         pass
 
-    def on_print(self, oldx, oldy, oldz, olde, changex, changey, changez, changee):
+    def on_print(self, oldp, delta):
         pass
 
-    def on_retract_move(self, oldx, oldy, oldz, olde, changex, changey, changez, changee):
+    def on_retract_move(self, oldp, delta):
         pass
 
-    def on_extrude(self, olde, changee):
+    def on_extrude(self, oldp, delta):
         pass
 
-    def on_retract(self, olde, changee):
+    def on_retract(self, oldp, delta):
         pass
-
-printer = Printer()
 
 class CamEventDetector(EventDetector):
     def __init__(self, printer):
@@ -235,21 +226,24 @@ class CamEventDetector(EventDetector):
     def on_init(self):
         print("Initialized.   State" + self._printer.state())
 
-    def on_move(self, oldx, oldy, oldz, changex, changey, changez):
-        print("Moved." + "TODO" + "   New state: " + self._printer.state())
+    def on_move(self, oldp, delta):
+        print("Moved. " + str(delta) + "   New state: " + self._printer.state())
 
-    def on_print(self, oldx, oldy, oldz, olde, changex, changey, changez, changee):
-        print("Printed.   New state: " + self._printer.state())
+    def on_print(self, oldp, delta):
+        print("Printed. " + str(delta) + "   New state: " + self._printer.state())
 
-    def on_retract_move(self, oldx, oldy, oldz, olde, changex, changey, changez, changee):
-        print("Moved and retracted.   New state: " + self._printer.state())
+    def on_retract_move(self, oldp, delta):
+        print("Moved and retracted. " + str(delta) + "   New state: " + self._printer.state())
 
-    def on_extrude(self, olde, changee):
-        print("Extruded.   New state: " + self._printer.state())
+    def on_extrude(self, oldp, delta):
+        print("Extruded. " + str(delta) + "   New state: " + self._printer.state())
 
-    def on_retract(self, olde, changee):
-        print("Retracted.   New state: " + self._printer.state())
+    def on_retract(self, oldp, delta):
+        print("Retracted. " + str(delta) + "   New state: " + self._printer.state())
 
+# ####################################################################
+
+printer = Printer()
 event_detector = CamEventDetector(printer)
 
 for line in lines:
