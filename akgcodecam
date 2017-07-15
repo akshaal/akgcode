@@ -6,8 +6,10 @@ import os
 import argparse
 import subprocess
 import networkx
+import math
 
-# https://networkx.github.io/documentation/networkx-1.10/reference/generated/networkx.algorithms.shortest_paths.generic.shortest_path.html
+MAX_BED_WIDTH = 300
+MAX_BED_DEPTH = 300
 
 try:
     TERM_COLUMNS = int (os.popen ('stty size 2>/dev/null', 'r').read ().split () [1])
@@ -37,8 +39,8 @@ TERM_SEPLINE = "=" * TERM_COLUMNS
 PRINTER_IGNORE = ["M190", "M104", "M109", "G21", "M82", "M107", "M117", "M205", "M140", "M106", "M84"]
 MODE_ABS = "ABS"
 MODE_REL = "REL"
-START_XY = (-1, -1)
-FINISH_XY = (-2, -2)
+START_XYZ = (-1, -1, -1)
+FINISH_XYZ = (-2, -2, -2)
 
 def call (cmd_args, **kw):
     print_debug ("About to call: ", cmd_args)
@@ -71,6 +73,14 @@ def print_debug(*parts):
     if cmd_args.verbose:
         parts = map(str, parts)
         print >> sys.stderr, GRAPH_COLOR + ":::: ... " + DEBUG_COLOR, "".join(parts).replace(RESET_COLOR, DEBUG_COLOR) + DEBUG_COLOR
+
+def calc_move_weight(x1, y1, x2, y2):
+    yd = abs(y2 - y1)
+    xd = abs(x2 - x1)
+
+    o = math.sqrt((MAX_BED_WIDTH-x2)*(MAX_BED_WIDTH-x2) + (MAX_BED_DEPTH-y2)*(MAX_BED_DEPTH-y2))
+
+    return yd * 10000000 + o*1000 + xd
 
 class Pos:
     def __init__(self, x = None, y = None, z = None, e = None):
@@ -345,33 +355,34 @@ class CamEventDetector(EventDetector):
         g = networkx.Graph()
 
         print_info("... adding nodes")
-        for l in self.layers.layer_by_z.values():
-            for xy in l.line_by_xy.keys():
-                g.add_node(xy)
+        for z, l in self.layers.layer_by_z.items():
+            for x, y in l.line_by_xy.keys():
+                g.add_node((x, y, z))
 
-        g.add_node(START_XY)
-        g.add_node(FINISH_XY)
+        g.add_node(START_XYZ)
+        g.add_node(FINISH_XYZ)
 
         print_info("... adding edges")
         zs = self.layers.layer_by_z.keys()
         zs.sort()
 
         # Edges for start point
-        for xy in self.layers.get(zs[0]).line_by_xy.keys():
-            g.add_edge(START_XY, xy)
+        for x, y in self.layers.get(zs[0]).line_by_xy.keys():
+            g.add_edge(START_XYZ, (x, y, zs[0]), weight = 0)
 
         # Edges for end point
-        for xy in self.layers.get(zs[-1]).line_by_xy.keys():
-            g.add_edge(xy, FINISH_XY)
+        for x, y in self.layers.get(zs[-1]).line_by_xy.keys():
+            g.add_edge((x, y, zs[-1]), FINISH_XYZ, weight = 0)
 
         # Normal edges
         for i in range(0, len(zs) - 1):
             z = zs[i]
             next_z = zs[i+1]
 
-            for xy in self.layers.get(z).line_by_xy.keys():
-                for next_xy in self.layers.get(next_z).line_by_xy.keys():
-                    g.add_edge(xy, next_xy)
+            for x, y in self.layers.get(z).line_by_xy.keys():
+                for next_x, next_y in self.layers.get(next_z).line_by_xy.keys():
+                    weight = calc_move_weight(x, y, next_x, next_y)
+                    g.add_edge((x, y, z), (next_x, next_y, next_z), weight = weight)
 
         return g
 
@@ -411,6 +422,10 @@ def doit():
 
     # Creating networkx graph
     g = event_detector.create_graph()
+
+    print_info("Findish 'shortest' path...")
+    path = networkx.shortest_path(g, source = START_XYZ, target = FINISH_XYZ, weight = "weight")
+    print(path)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description = 'GCode post-processor by Akshaal')
