@@ -1,19 +1,73 @@
 #!/usr/bin/python
 
 import codecs
+import sys
+import os
+import argparse
+import subprocess
 
 # https://networkx.github.io/documentation/networkx-1.10/reference/generated/networkx.algorithms.shortest_paths.generic.shortest_path.html
 
-def read_file (filename, encoding = "utf8"):
-    """Read entire file."""
+try:
+    TERM_COLUMNS = int (os.popen ('stty size 2>/dev/null', 'r').read ().split () [1])
+    __builtins__.RESET_COLOR = '\033[0m'
+    __builtins__.ERROR_COLOR = '\033[91m'
+    __builtins__.INFO_COLOR = '\033[92m'
+    __builtins__.DEBUG_COLOR = '\033[93m'
+    __builtins__.GRAPH_COLOR = '\033[94m'
+    __builtins__.STRESS_COLOR = '\033[95m'
+except:
+    TERM_COLUMNS = 80
+    __builtins__.RESET_COLOR = ''
+    __builtins__.ERROR_COLOR = ''
+    __builtins__.INFO_COLOR = ''
+    __builtins__.DEBUG_COLOR = ''
+    __builtins__.GRAPH_COLOR = ''
+    __builtins__.STRESS_COLOR = ''
 
-    return codecs.open (filename, "r", encoding).read ()
+__builtins__.STRESS = lambda s: STRESS_COLOR + str(s) + RESET_COLOR
+__builtins__.ERROR = lambda s: ERROR_COLOR + str(s) + RESET_COLOR
+__builtins__.INFO = lambda s: INFO_COLOR + str(s) + RESET_COLOR
+__builtins__.DEBUG = lambda s: DEBUG_COLOR + str(s) + RESET_COLOR
+__builtins__.GRAPH = lambda s: GRAPH_COLOR + str(s) + RESET_COLOR
 
-lines = read_file("test.gcode").split("\n")
+TERM_SEPLINE = "=" * TERM_COLUMNS
 
 PRINTER_IGNORE = ["M190", "M104", "M109", "G21", "M82", "M107", "M117", "M205", "M140", "M106", "M84"]
 MODE_ABS = "ABS"
 MODE_REL = "REL"
+
+def call (cmd_args, **kw):
+    print_debug ("About to call: ", cmd_args)
+    rc = subprocess.call (cmd_args, **kw)
+
+    print_debug ("The call result for '", type(cmd_args) == str and cmd_args or cmd_args [0], "' is: ", rc)
+
+    return rc
+
+def read_file (filename, encoding = "utf8"):
+    """Read entire file."""
+    return codecs.open (filename, "r", encoding).read ()
+
+def write_file (filename, content, encoding = "utf8"):
+    """Read entire file."""
+    return codecs.open (filename, "w", encoding).write (content)
+
+def print_sep():
+    print >> sys.stderr, GRAPH_COLOR + TERM_SEPLINE + RESET_COLOR
+
+def print_info(*parts):
+    parts = map(str, parts)
+    print >> sys.stderr, GRAPH_COLOR + "::::" + INFO_COLOR, "".join(parts).replace(RESET_COLOR, INFO_COLOR) + RESET_COLOR
+
+def print_error(*parts):
+    parts = map(str, parts)
+    print >> sys.stderr, GRAPH_COLOR + "!!!!" + ERROR_COLOR, "".join(parts).replace(RESET_COLOR, ERROR_COLOR) + RESET_COLOR
+
+def print_debug(*parts):
+    if cmd_args.verbose:
+        parts = map(str, parts)
+        print >> sys.stderr, GRAPH_COLOR + ":::: ... " + DEBUG_COLOR, "".join(parts).replace(RESET_COLOR, DEBUG_COLOR) + DEBUG_COLOR
 
 class Pos:
     def __init__(self, x = None, y = None, z = None, e = None):
@@ -173,7 +227,7 @@ class EventDetector(object):
         self._printer = printer
         self.__initialized = False
 
-    def handle(self, line):
+    def handle(self, linen, line):
         oldp = self._printer.pos
 
         self._printer.handle(line)
@@ -183,68 +237,145 @@ class EventDetector(object):
 
             if delta.has_xyz_moves():
                 if delta.is_extrusion():
-                    self.on_print(oldp, delta)
+                    self.on_print(linen, oldp, delta)
                 elif delta.is_retraction():
-                    self.on_retract_move(oldp, delta)
+                    self.on_retract_move(linen, oldp, delta)
                 else:
-                    self.on_move(oldp, delta)
+                    self.on_move(linen, oldp, delta)
             else:
                 if delta.is_extrusion():
-                    self.on_extrude(oldp, delta)
+                    self.on_extrude(linen, oldp, delta)
                 elif delta.is_retraction():
-                    self.on_retract(oldp, delta)
+                    self.on_retract(linen, oldp, delta)
                 else:
                     pass # nothing
         else:
             # Was not initialized, check now
             if self._printer.pos.is_defined():
                 self.__initialized = True
-                self.on_init()
+                self.on_init(linen)
 
-    def on_init():
+    def on_init(linen):
         pass
 
-    def on_move(self, oldp, delta):
+    def on_move(self, linen, oldp, delta):
         pass
 
-    def on_print(self, oldp, delta):
+    def on_print(self, linen, oldp, delta):
         pass
 
-    def on_retract_move(self, oldp, delta):
+    def on_retract_move(self, linen, oldp, delta):
         pass
 
-    def on_extrude(self, oldp, delta):
+    def on_extrude(self, linen, oldp, delta):
         pass
 
-    def on_retract(self, oldp, delta):
+    def on_retract(self, linen, oldp, delta):
         pass
+
+class Layer:
+    def __init__(self):
+        self.line_by_xy = {}
+
+    def add(self, x, y, linen):
+        self.line_by_xy[(x, y)] = linen
+
+class Layers:
+    def __init__(self):
+        self.layer_by_z = {}
+
+    def get(self, z):
+        if z in self.layer_by_z:
+            return self.layer_by_z[z]
+        else:
+            l = Layer()
+            self.layer_by_z[z] = l
+            return l
 
 class CamEventDetector(EventDetector):
     def __init__(self, printer):
         super(self.__class__, self).__init__(printer)
+        self.layers = Layers()
 
-    def on_init(self):
-        print("Initialized.   State" + self._printer.state())
+    def __add_pos(self, linen):
+        self.layers.get(self._printer.pos.z).add(self._printer.pos.x, self._printer.pos.y, linen)
 
-    def on_move(self, oldp, delta):
-        print("Moved. " + str(delta) + "   New state: " + self._printer.state())
+    def on_init(self, linen):
+        print_debug(linen, ": Initialized.   State", self._printer.state())
 
-    def on_print(self, oldp, delta):
-        print("Printed. " + str(delta) + "   New state: " + self._printer.state())
+    def on_move(self, linen, oldp, delta):
+        print_debug(linen, ": Moved. ", STRESS(delta), "   New state: ", self._printer.state())
+        self.__add_pos(linen)
 
-    def on_retract_move(self, oldp, delta):
-        print("Moved and retracted. " + str(delta) + "   New state: " + self._printer.state())
+    def on_print(self, linen, oldp, delta):
+        print_debug(linen, ": Printed. ", STRESS(delta), "   New state: ", self._printer.state())
+        self.__add_pos(linen)
 
-    def on_extrude(self, oldp, delta):
-        print("Extruded. " + str(delta) + "   New state: " + self._printer.state())
+    def on_retract_move(self, linen, oldp, delta):
+        print_debug(linen, ": Moved and retracted. ", STRESS(delta), "   New state: ", self._printer.state())
+        self.__add_pos(linen)
 
-    def on_retract(self, oldp, delta):
-        print("Retracted. " + str(delta) + "   New state: " + self._printer.state())
+    def on_extrude(self, linen, oldp, delta):
+        print_debug(linen, ": Extruded. ", STRESS(delta), "   New state: ", self._printer.state())
+        self.__add_pos(linen)
+
+    def on_retract(self, linen, oldp, delta):
+        print_debug(linen, ": Retracted. ", STRESS(delta), "   New state: ", self._printer.state())
+        self.__add_pos(linen)
+
+    def write_poses_to_file(self, filename):
+        print_info("Writing: ", STRESS(filename))
+
+        lines = []
+
+        zs = self.layers.layer_by_z.keys()
+        zs.sort()
+        for z in zs:
+            for x, y in self.layers.get(z).line_by_xy.keys():
+                lines.append(str(x) + " " + str(y) + " " + str(z))
+
+        write_file(filename, "\n".join(lines) + "\n")
+
 
 # ####################################################################
 
-printer = Printer()
-event_detector = CamEventDetector(printer)
+def doit():
+    filename = cmd_args.filenames[0]
 
-for line in lines:
-    event_detector.handle(line)
+    print_sep()
+    print_info("Processing: ", STRESS(filename))
+
+    printer = Printer()
+    event_detector = CamEventDetector(printer)
+
+    lines = read_file(cmd_args.filenames[0]).split("\n")
+
+    # First step, gather info about lines
+    i = 0
+    for line in lines:
+        i += 1
+        event_detector.handle(i, line)
+
+    # Write all positions to a file that we will use from gnuplot to draw them
+    event_detector.write_poses_to_file(filename + ".dat")
+
+    # Write gnuplot data
+    print_info("Writing: ", STRESS(filename + ".gnuplot"))
+    gnuplot_content = """
+        set term pdf
+        set output "xxx.pdf"
+        splot 'xxx.dat'
+    """.replace("xxx", filename)
+
+    write_file(filename + ".gnuplot", gnuplot_content)
+    print_info("Calling gnuplot...")
+    call(["gnuplot", filename + ".gnuplot"])
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description = 'GCode post-processor by Akshaal')
+    parser.add_argument ('-v', dest = 'verbose', action = 'store_const', const = True, default = False, help = 'verbose')
+    parser.add_argument ('filenames', metavar = 'FILE', type = str, nargs = 1, help = 'a file to process')
+
+    cmd_args = parser.parse_args()
+
+    doit()
