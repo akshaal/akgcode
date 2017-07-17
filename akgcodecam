@@ -349,13 +349,19 @@ class CamEventDetector(EventDetector):
 
         write_file(filename, "\n".join(lines) + "\n")
 
-    def create_graph(self):
+def find_cam_path(layers):
+    def add_edges(g, x, y, z, next_z):
+        for next_x, next_y in layers.get(next_z).line_by_xy.keys():
+            weight = calc_move_weight(x, y, next_x, next_y)
+            #g.add_edge((x, y, z), (next_x, next_y, next_z), weight = weight)
+
+    def create_graph():
         print_info("Create graph...")
 
         g = networkx.Graph()
 
         print_info("... adding nodes")
-        for z, l in self.layers.layer_by_z.items():
+        for z, l in layers.layer_by_z.items():
             for x, y in l.line_by_xy.keys():
                 g.add_node((x, y, z))
 
@@ -363,15 +369,15 @@ class CamEventDetector(EventDetector):
         g.add_node(FINISH_XYZ)
 
         print_info("... adding edges")
-        zs = self.layers.layer_by_z.keys()
+        zs = layers.layer_by_z.keys()
         zs.sort()
 
         # Edges for start point
-        for x, y in self.layers.get(zs[0]).line_by_xy.keys():
+        for x, y in layers.get(zs[0]).line_by_xy.keys():
             g.add_edge(START_XYZ, (x, y, zs[0]), weight = 0)
 
         # Edges for end point
-        for x, y in self.layers.get(zs[-1]).line_by_xy.keys():
+        for x, y in layers.get(zs[-1]).line_by_xy.keys():
             g.add_edge((x, y, zs[-1]), FINISH_XYZ, weight = 0)
 
         # Normal edges
@@ -379,12 +385,14 @@ class CamEventDetector(EventDetector):
             z = zs[i]
             next_z = zs[i+1]
 
-            for x, y in self.layers.get(z).line_by_xy.keys():
-                for next_x, next_y in self.layers.get(next_z).line_by_xy.keys():
-                    weight = calc_move_weight(x, y, next_x, next_y)
-                    g.add_edge((x, y, z), (next_x, next_y, next_z), weight = weight)
+            for x, y in layers.get(z).line_by_xy.keys():
+                add_edges(g, x, y, z, next_z)
 
         return g
+
+    g = create_graph()
+
+    #return path
 
 # ####################################################################
 
@@ -421,11 +429,11 @@ def doit():
     call(["gnuplot", filename + ".gnuplot"])
 
     # Creating networkx graph
-    g = event_detector.create_graph()
+    print(find_cam_path(event_detector.layers))
 
-    print_info("Findish 'shortest' path...")
-    path = networkx.shortest_path(g, source = START_XYZ, target = FINISH_XYZ, weight = "weight")
-    print(path)
+    #print_info("Finding 'shortest' path...")
+    #path = networkx.shortest_path(g, source = START_XYZ, target = FINISH_XYZ, weight = "weight")
+    #print(path)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description = 'GCode post-processor by Akshaal')
