@@ -1,0 +1,6 @@
+#!/bin/sh
+
+S=$(realpath "$0")
+D=$(dirname "$S")
+
+scala -save "$D"/akgcode.scala "$@"
