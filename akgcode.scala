@@ -6,16 +6,16 @@ import org.rogach.scallop.{ScallopConf, ScallopOption}
 import org.rogach.scallop.exceptions.RequiredOptionNotFound
     
 object AkScriptUtils {
-    val termColumnsOpt: Option[Int] =
-        Try {
-            IOUtils.toString(
-                new ProcessBuilder("stty", "size")
-                       .redirectInput(ProcessBuilder.Redirect.INHERIT)
-                       .start()
-                       .getInputStream(),
-                "utf8"
-            ).split(" ")(1).trim.toInt
-        }.toOption
+    def captureOutputInheritInput(cmd: String, args: String*): String = {
+        IOUtils.toString(
+            new ProcessBuilder((Seq(cmd) ++ args): _*)
+                .redirectInput(ProcessBuilder.Redirect.INHERIT)
+                .start()
+                .getInputStream(),
+            "utf8")
+    }
+    
+    val termColumnsOpt: Option[Int] = Try { captureOutputInheritInput("stty", "size").split(" ")(1).trim.toInt }.toOption
 }
     
 import AkScriptUtils._
