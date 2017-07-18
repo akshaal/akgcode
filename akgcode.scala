@@ -1,6 +1,8 @@
+// Akshaal, 2017
+
 import org.rogach.scallop.{ScallopConf, ScallopOption}
 import org.rogach.scallop.exceptions.RequiredOptionNotFound
-
+    
 class Conf(args: Seq[String]) extends ScallopConf(args) {
     version("akgcode by Akshaal, 2017")
     banner("""Usage: akgcode [OPTION]... <input-filename>
