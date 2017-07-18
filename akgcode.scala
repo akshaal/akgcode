@@ -1,7 +1,24 @@
 // Akshaal, 2017
 
+import scala.util.Try
+import org.apache.commons.io.IOUtils
 import org.rogach.scallop.{ScallopConf, ScallopOption}
 import org.rogach.scallop.exceptions.RequiredOptionNotFound
+    
+object AkScriptUtils {
+    val termColumnsOpt: Option[Int] =
+        Try {
+            IOUtils.toString(
+                new ProcessBuilder("stty", "size")
+                       .redirectInput(ProcessBuilder.Redirect.INHERIT)
+                       .start()
+                       .getInputStream(),
+                "utf8"
+            ).split(" ")(1).trim.toInt
+        }.toOption
+}
+    
+import AkScriptUtils._
     
 class Conf(args: Seq[String]) extends ScallopConf(args) {
     version("akgcode by Akshaal, 2017")
@@ -21,9 +38,10 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
         
     verify()
 }
-
+    
 object AkGCodeApp extends App {
     val conf = new Conf(args)
-
+    
+    println(termColumnsOpt)
     println((conf.inputFilename, conf.verbose))
 }
