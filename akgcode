@@ -15,11 +15,15 @@ mkdir -p "$CACHE_DIR"
 # Recompile cached jar file
 if test "(" "!" "(" "-e" "$OUR_JAR_FILE"  ")" ")"  -o "(" "$SRC_DIR/akgcode.scala" -nt "$OUR_JAR_FILE" ")"; then
     scalac -classpath "$CLASSPATH"\
+           -deprecation \
+           -Xfatal-warnings \
+           -Xlint \
            -d "$OUR_JAR_FILE" \
            "$SRC_DIR/akgcode.scala" \
            || exit
 fi
 
 scala -classpath "$CLASSPATH"\
+       -deprecation \
        "$OUR_JAR_FILE" \
        "$@"
