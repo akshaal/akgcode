@@ -1,6 +1,25 @@
 #!/bin/sh
 
-S=$(realpath "$0")
-D=$(dirname "$S")
+THIS_SCRIPT=$(realpath "$0")
+THIS_SCRIPT_DIR=$(dirname "$THIS_SCRIPT")
 
-scala -save "$D"/akgcode.scala "$@"
+SRC_DIR="$THIS_SCRIPT_DIR"
+JARS_DIR="$THIS_SCRIPT_DIR"
+CACHE_DIR="$THIS_SCRIPT_DIR/cache"
+OUR_JAR_FILE="$CACHE_DIR/akgcode.jar"
+
+CLASSPATH="$JARS_DIR/scallop_2.12-3.0.3.jar"
+
+mkdir -p "$CACHE_DIR"
+
+# Recompile cached jar file
+if test "(" "!" "(" "-e" "$OUR_JAR_FILE"  ")" ")"  -o "(" "$SRC_DIR/akgcode.scala" -nt "$OUR_JAR_FILE" ")"; then
+    scalac -classpath "$CLASSPATH"\
+           -d "$OUR_JAR_FILE" \
+           "$SRC_DIR/akgcode.scala" \
+           || exit
+fi
+
+scala -classpath "$CLASSPATH"\
+       "$OUR_JAR_FILE" \
+       "$@"
