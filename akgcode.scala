@@ -37,7 +37,7 @@ object AkScriptUtils {
     def DEBUG(s: String): String = DEBUG_COLOR + s + RESET_COLOR
     def GRAPH(s: String): String = GRAPH_COLOR + s + RESET_COLOR
     def STRESS(s: String): String = STRESS_COLOR + s + RESET_COLOR
-
+        
     val TERM_SEPLINE = "=" * termColumns
 
     def print_sep(): Unit = System.err.println(GRAPH(TERM_SEPLINE))
@@ -74,11 +74,27 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     verify()
 }
     
+case class Pos(value: Int) extends AnyVal
+    
+object Pos {
+    val SCALE = 1000
+    
+    val undefined = Pos(-100000)
+    val zero = Pos(0) 
+}
+        
+object XYZE {
+    val undefined = XYZE()
+}
+    
+case class XYZE(x: Pos = Pos.undefined, y: Pos = Pos.undefined, z: Pos = Pos.undefined, e: Pos = Pos.undefined) {
+    def isDefined: Boolean = x != Pos.undefined && y != Pos.undefined && z != Pos.undefined && e != Pos.undefined
+    
+    def isAtHome: Boolean = x == Pos.zero && y == Pos.zero && z == Pos.zero
+}
+    
 object AkGCodeApp extends App {
     val conf = new Conf(args)
-
-    print_sep()
     
-    println((termColumns))
-    println((conf.inputFilename, conf.verbose))
+    print_sep()
 }
