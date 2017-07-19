@@ -39,7 +39,7 @@ object AkScriptUtils {
     def STRESS(s: String): String = STRESS_COLOR + s + RESET_COLOR
         
     val TERM_SEPLINE = "=" * termColumns
-
+    
     def print_sep(): Unit = System.err.println(GRAPH(TERM_SEPLINE))
 
     def print_info(vals: Any*): Unit = System.err.println(GRAPH(":::: ") + INFO(vals.mkString("").replace(RESET_COLOR, INFO_COLOR)))
@@ -74,7 +74,19 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     verify()
 }
     
-case class Pos(value: Int) extends AnyVal
+case class Pos(value: Int) extends AnyVal {
+    def +(other: Pos): Pos = {
+        if (other == Pos.undefined) throw new RuntimeException("Other pos is undefined!")
+        else if (this == Pos.undefined) throw new RuntimeException("This pos is undefined!")
+        else Pos(value + other.value)
+    }
+    
+    def -(other: Pos): Pos = {
+        if (other == Pos.undefined) throw new RuntimeException("Other pos is undefined!")
+        else if (this == Pos.undefined) throw new RuntimeException("This pos is undefined!")
+        else Pos(value - other.value)
+    }
+}
     
 object Pos {
     val SCALE = 1000
