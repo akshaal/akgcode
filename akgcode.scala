@@ -1,6 +1,7 @@
 // Evgeny "Akshaal" Chukreev, 2017
 
 import scala.util.Try
+import scala.util.control.NonFatal
 import org.apache.commons.io.IOUtils
 import org.rogach.scallop.{ScallopConf, ScallopOption}
 import org.rogach.scallop.exceptions.RequiredOptionNotFound
@@ -16,22 +17,22 @@ object AkScriptUtils {
                 .getInputStream(),
             "utf8")
     }
-
+        
     val isConsole: Boolean = System.console() != null
     
     def inConsoleOrElse[T](v: T, vElse: T): T = if (isConsole) v else vElse
     
     val termColumnsOpt: Option[Int] = Try { captureOutputInheritInput("stty", "size").split(" ")(1).trim.toInt }.toOption
-
+    
     val termColumns: Int = inConsoleOrElse(termColumnsOpt, None).getOrElse(78)
-
+        
     val RESET_COLOR: String = inConsoleOrElse("\u001b[0m", "")
     val ERROR_COLOR: String = inConsoleOrElse("\u001b[91m", "")
     val INFO_COLOR: String = inConsoleOrElse("\u001b[92m", "")
     val DEBUG_COLOR: String = inConsoleOrElse("\u001b[93m", "")
     val GRAPH_COLOR: String = inConsoleOrElse("\u001b[94m", "")
     val STRESS_COLOR: String = inConsoleOrElse("\u001b[95m", "")
-
+    
     def ERROR(s: String): String = ERROR_COLOR + s + RESET_COLOR
     def INFO(s: String): String = INFO_COLOR + s + RESET_COLOR
     def DEBUG(s: String): String = DEBUG_COLOR + s + RESET_COLOR
@@ -41,7 +42,7 @@ object AkScriptUtils {
     val TERM_SEPLINE = "=" * termColumns
     
     def print_sep(): Unit = System.err.println(GRAPH(TERM_SEPLINE))
-
+        
     def print_info(vals: Any*): Unit = System.err.println(GRAPH(":::: ") + INFO(vals.mkString("").replace(RESET_COLOR, INFO_COLOR)))
     def print_error(vals: Any*): Unit = System.err.println(GRAPH("!!!! ") + ERROR(vals.mkString("").replace(RESET_COLOR, ERROR_COLOR)))
     
@@ -51,7 +52,19 @@ object AkScriptUtils {
         }
     }
 }
+ 
+case class Borked(msg: String, exc: Throwable = null) extends RuntimeException(msg, exc)
     
+object Borked {
+    def inCtx[T](ctxMsg: => String)(code: => T): T = {
+        try code catch {
+            case NonFatal(exc) =>
+                if (exc.getMessage == null) throw new Borked(ctxMsg, exc)
+                else throw new Borked(ctxMsg + ": " + exc.getMessage, exc)
+        }
+    }
+}
+   
 import AkScriptUtils._
     
 class Conf(args: Seq[String]) extends ScallopConf(args) {
@@ -69,30 +82,57 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
             printHelp()
             println()
             System.exit(-1)
+            
+        case exc => throw exc
     }
         
     verify()
 }
-    
+ 
+sealed abstract class MoveMode
+object MoveMode {
+    case object Abs extends MoveMode
+    case object Rel extends MoveMode
+}
+   
 case class Pos(value: Int) extends AnyVal {
+    def isUndefined: Boolean = this == Pos.undefined
+    def isDefined: Boolean = !this.isUndefined
+    def isZero: Boolean = this == Pos.zero
+    def isNotZero: Boolean = !this.isZero
+    
     def +(other: Pos): Pos = {
-        if (other == Pos.undefined) throw new RuntimeException("Other pos is undefined!")
-        else if (this == Pos.undefined) throw new RuntimeException("This pos is undefined!")
+        if (other.isUndefined) throw Borked("Other pos is undefined!")
+        else if (this.isUndefined) throw Borked("This pos is undefined!")
         else Pos(value + other.value)
     }
     
     def -(other: Pos): Pos = {
-        if (other == Pos.undefined) throw new RuntimeException("Other pos is undefined!")
-        else if (this == Pos.undefined) throw new RuntimeException("This pos is undefined!")
+        if (other.isUndefined) throw Borked("Other pos is undefined!")
+        else if (this.isUndefined) throw Borked("This pos is undefined!")
         else Pos(value - other.value)
     }
+    
+    def or(other: Pos): Pos = if (this.isDefined) this else other
+    
+    def addIfDefined(other: Pos): Pos = if (other.isDefined) this + other else this
+ 
+    def move(moveMode: MoveMode, other: Pos): Pos =
+        moveMode match {
+            case MoveMode.Rel => this addIfDefined other
+            case MoveMode.Abs => other or this
+        }
+   
+    def toDouble: Double = value.toDouble / 1000
 }
     
 object Pos {
     val SCALE = 1000
     
     val undefined = Pos(-100000)
-    val zero = Pos(0) 
+    val zero = Pos(0)
+    
+    def fromDouble(d: Double): Pos = Pos(Math.round((d * SCALE).toFloat))
 }
         
 object XYZE {
@@ -100,9 +140,16 @@ object XYZE {
 }
     
 case class XYZE(x: Pos = Pos.undefined, y: Pos = Pos.undefined, z: Pos = Pos.undefined, e: Pos = Pos.undefined) {
-    def isDefined: Boolean = x != Pos.undefined && y != Pos.undefined && z != Pos.undefined && e != Pos.undefined
+    def isDefined: Boolean = x.isDefined && y.isDefined && z.isDefined && e.isDefined
+    def isAtHome: Boolean = x.isZero && y.isZero && z.isZero
     
-    def isAtHome: Boolean = x == Pos.zero && y == Pos.zero && z == Pos.zero
+    def move(moveMode: MoveMode, other: XYZE): XYZE =
+        XYZE(
+            x = Borked.inCtx("x")(x.move(moveMode, other.x)),
+            y = Borked.inCtx("y")(y.move(moveMode, other.y)),
+            z = Borked.inCtx("z")(z.move(moveMode, other.z)),
+            e = Borked.inCtx("e")(e.move(moveMode, other.e))
+        )
 }
     
 object AkGCodeApp extends App {
@@ -110,3 +157,4 @@ object AkGCodeApp extends App {
     
     print_sep()
 }
+    
