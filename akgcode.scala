@@ -101,17 +101,18 @@ case class Pos(value: Int) extends AnyVal {
     def isZero: Boolean = this == Pos.zero
     def isNotZero: Boolean = !this.isZero
     
-    def +(other: Pos): Pos = {
+    private def ensureBothDefined(other: Pos): Unit = {
         if (other.isUndefined) throw Borked("Other pos is undefined!")
         else if (this.isUndefined) throw Borked("This pos is undefined!")
-        else Pos(value + other.value)
     }
     
-    def -(other: Pos): Pos = {
-        if (other.isUndefined) throw Borked("Other pos is undefined!")
-        else if (this.isUndefined) throw Borked("This pos is undefined!")
-        else Pos(value - other.value)
-    }
+    def >(other: Pos): Boolean = { ensureBothDefined(other); value > other.value }
+    def >=(other: Pos): Boolean = { ensureBothDefined(other); value >= other.value }
+    def <=(other: Pos): Boolean = { ensureBothDefined(other); value <= other.value }
+    def <(other: Pos): Boolean = { ensureBothDefined(other); value < other.value }
+    def ===(other: Pos): Boolean = { ensureBothDefined(other); value == other.value }
+    def +(other: Pos): Pos = { ensureBothDefined(other); Pos(value + other.value) }
+    def -(other: Pos): Pos = { ensureBothDefined(other); Pos(value - other.value) }
     
     def or(other: Pos): Pos = if (this.isDefined) this else other
     
@@ -134,6 +135,12 @@ object Pos {
     
     def fromDouble(d: Double): Pos = Pos(Math.round((d * SCALE).toFloat))
 }
+    
+case class Delta(dx: Pos, dy: Pos, dz: Pos, de: Pos) {
+    def isXyzMove: Boolean = dx.isNotZero || dy.isNotZero || dz.isNotZero
+    def isExtrusion: Boolean = de > Pos.zero
+    def isRetraction: Boolean = de < Pos.zero
+}
         
 object XYZE {
     val undefined = XYZE()
@@ -150,8 +157,10 @@ case class XYZE(x: Pos = Pos.undefined, y: Pos = Pos.undefined, z: Pos = Pos.und
             z = Borked.inCtx("z")(z.move(moveMode, other.z)),
             e = Borked.inCtx("e")(e.move(moveMode, other.e))
         )
-}
     
+    def -(other: XYZE): Delta = Delta(dx = x - other.x, dy = y - other.y, dz = z - other.z, de = e - other.e)
+}
+
 object AkGCodeApp extends App {
     val conf = new Conf(args)
     
