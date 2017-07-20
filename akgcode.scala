@@ -33,20 +33,20 @@ object AkScriptUtils {
     val GRAPH_COLOR: String = inConsoleOrElse("\u001b[94m", "")
     val STRESS_COLOR: String = inConsoleOrElse("\u001b[95m", "")
     
-    def ERROR(s: String): String = ERROR_COLOR + s + RESET_COLOR
-    def INFO(s: String): String = INFO_COLOR + s + RESET_COLOR
-    def DEBUG(s: String): String = DEBUG_COLOR + s + RESET_COLOR
-    def GRAPH(s: String): String = GRAPH_COLOR + s + RESET_COLOR
-    def STRESS(s: String): String = STRESS_COLOR + s + RESET_COLOR
+    def ERROR(s: Any): String = ERROR_COLOR + s + RESET_COLOR
+    def INFO(s: Any): String = INFO_COLOR + s + RESET_COLOR
+    def DEBUG(s: Any): String = DEBUG_COLOR + s + RESET_COLOR
+    def GRAPH(s: Any): String = GRAPH_COLOR + s + RESET_COLOR
+    def STRESS(s: Any): String = STRESS_COLOR + s + RESET_COLOR
         
     val TERM_SEPLINE = "=" * termColumns
     
-    def print_sep(): Unit = System.err.println(GRAPH(TERM_SEPLINE))
+    def printSep(): Unit = System.err.println(GRAPH(TERM_SEPLINE))
         
-    def print_info(vals: Any*): Unit = System.err.println(GRAPH(":::: ") + INFO(vals.mkString("").replace(RESET_COLOR, INFO_COLOR)))
-    def print_error(vals: Any*): Unit = System.err.println(GRAPH("!!!! ") + ERROR(vals.mkString("").replace(RESET_COLOR, ERROR_COLOR)))
+    def printInfo(vals: Any*): Unit = System.err.println(GRAPH(":::: ") + INFO(vals.mkString("").replace(RESET_COLOR, INFO_COLOR)))
+    def printError(vals: Any*): Unit = System.err.println(GRAPH("!!!! ") + ERROR(vals.mkString("").replace(RESET_COLOR, ERROR_COLOR)))
     
-    def print_debug(vals: Any*): Unit = {
+    def printDebug(vals: Any*): Unit = {
         if (verbose) {
             System.err.println(GRAPH(":::: ... ") + DEBUG(vals.mkString("").replace(RESET_COLOR, DEBUG_COLOR)))
         }
@@ -78,7 +78,7 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     
     override def onError(e: Throwable): Unit = e match {
         case RequiredOptionNotFound(optionName) =>
-            print_error(s"\n\nRequired option not found: ${STRESS(optionName)}\nSee below for more info...\n\n")
+            printError(s"\n\nRequired option not found: ${STRESS(optionName)}\nSee below for more info...\n\n")
             printHelp()
             println()
             System.exit(-1)
@@ -160,10 +160,18 @@ case class XYZE(x: Pos = Pos.undefined, y: Pos = Pos.undefined, z: Pos = Pos.und
     
     def -(other: XYZE): Delta = Delta(dx = x - other.x, dy = y - other.y, dz = z - other.z, de = e - other.e)
 }
-
-object AkGCodeApp extends App {
-    val conf = new Conf(args)
     
-    print_sep()
+case class GCodeFile(filename: String) {
+    printInfo("Reading GCode file: ", STRESS(filename))
+
+    val lines: Vector[String] = scala.io.Source.fromFile("test.gcode").getLines.toVector
+    printInfo("... done reading gcode file, it contains ", STRESS(lines.size), " lines")
+}
+    
+object AkGCodeApp extends App {
+    printSep()
+    
+    val conf = new Conf(args)
+    val gcodeFile = GCodeFile(conf.inputFilename.toOption.get)
 }
     
