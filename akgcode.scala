@@ -160,18 +160,70 @@ case class XYZE(x: Pos = Pos.undefined, y: Pos = Pos.undefined, z: Pos = Pos.und
     
     def -(other: XYZE): Delta = Delta(dx = x - other.x, dy = y - other.y, dz = z - other.z, de = e - other.e)
 }
-    
-case class GCodeFile(filename: String) {
+
+class GCodeFile(val filename: String) {
     printInfo("Reading GCode file: ", STRESS(filename))
 
     val lines: Vector[String] = scala.io.Source.fromFile("test.gcode").getLines.toVector
     printInfo("... done reading gcode file, it contains ", STRESS(lines.size), " lines")
 }
+
+class ParsedLine(lineWithIndex: (String, Int)) {
+    val (line, index): (String, Int) = lineWithIndex
+    val trimmedLine: String = line.split(";")(0).trim
+
+    val tokens: Seq[String] = trimmedLine.split(" ").map(_.trim).filter(_ != "")
+    val cmd: String = if (tokens.isEmpty) "" else tokens(0)
+    val args: Seq[String] = tokens drop 1
     
+    def isNotEmpty = trimmedLine != ""
+}   
+
+class Xyzes(gcodeFile: GCodeFile) {
+    printInfo("Searching for xyze states...")
+
+    private var xyze = XYZE()
+    private var moveModeOpt: Option[MoveMode] = None
+    private var ignoredCmds = 0
+
+    for (parsedLine <- gcodeFile.lines.zipWithIndex.map(new ParsedLine(_)) if parsedLine.isNotEmpty) {
+        Borked.inCtx(s"Line ${parsedLine.index}: ${parsedLine.cmd}") {
+            parsedLine.cmd.toUpperCase match {
+                case "M190" | "M104" | "M109" | "G21" | "M82" | "M107" | "M117" | "M205" | "M140" | "M106" | "M84" =>
+                    ignoredCmds += 1
+
+                case "G90" =>
+                    moveModeOpt = Some(MoveMode.Abs)
+
+                case "G91" =>
+                    moveModeOpt = Some(MoveMode.Rel)
+
+                case "G28" =>
+                    if (parsedLine.args.isEmpty) {
+                        xyze = xyze.copy(x = Pos.zero, y = Pos.zero, z = Pos.zero)
+                    } else {
+                        parsedLine.args foreach {
+                            case "X" | "X0" =>  xyze = xyze.copy(x = Pos.zero)
+                            case "Y" | "Y0" =>  xyze = xyze.copy(y = Pos.zero)
+                            case "Z" | "Z0" =>  xyze = xyze.copy(z = Pos.zero)
+                            case arg => Borked("Uknown argument: " + arg)
+                        }
+                    }
+                    
+                case cmd =>
+                    throw Borked("Uknown command!")
+            }
+        }
+    }
+
+    printInfo("... commands ignored: ", STRESS(ignoredCmds))
+}
+
 object AkGCodeApp extends App {
     printSep()
     
     val conf = new Conf(args)
-    val gcodeFile = GCodeFile(conf.inputFilename.toOption.get)
+    val gcodeFile = new GCodeFile(conf.inputFilename.toOption.get)
+    val xyzes = new Xyzes(gcodeFile)
 }
     
