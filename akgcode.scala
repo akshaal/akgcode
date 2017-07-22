@@ -202,13 +202,36 @@ class Xyzes(gcodeFile: GCodeFile) {
                     if (parsedLine.args.isEmpty) {
                         xyze = xyze.copy(x = Pos.zero, y = Pos.zero, z = Pos.zero)
                     } else {
-                        parsedLine.args foreach {
-                            case "X" | "X0" =>  xyze = xyze.copy(x = Pos.zero)
-                            case "Y" | "Y0" =>  xyze = xyze.copy(y = Pos.zero)
-                            case "Z" | "Z0" =>  xyze = xyze.copy(z = Pos.zero)
-                            case arg => Borked("Uknown argument: " + arg)
+                        for (arg <- parsedLine.args) {
+                            Borked.inCtx(arg) {
+                                arg match {
+                                    case "X" | "X0" =>  xyze = xyze.copy(x = Pos.zero)
+                                    case "Y" | "Y0" =>  xyze = xyze.copy(y = Pos.zero)
+                                    case "Z" | "Z0" =>  xyze = xyze.copy(z = Pos.zero)
+                                    case arg => Borked("Uknown argument!")
+                                }
+                            }
                         }
                     }
+
+/*        elif code == "G1" or code == "G01" or code == "G0" or code == "G00":
+            # Move
+            pargs = parse_args()
+
+            for arg in pargs:
+                if arg.startswith("X"):
+                    self.pos = self.pos.update(self.__mode, dx = float(arg[1:]))
+                elif arg.startswith("Y"):
+                    self.pos = self.pos.update(self.__mode, dy = float(arg[1:]))
+                elif arg.startswith("Z"):
+                    self.pos = self.pos.update(self.__mode, dz = float(arg[1:]))
+                elif arg.startswith("E"):
+                    self.pos = self.pos.update(self.__mode, de = float(arg[1:]))
+                elif arg.startswith("F"):
+                    pass
+                else:
+                    complain_parse(arg)
+*/
                     
                 case cmd =>
                     throw Borked("Uknown command!")
