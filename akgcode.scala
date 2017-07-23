@@ -137,7 +137,8 @@ object Pos {
     def fromString(s: String): Pos = fromDouble(s.toDouble)
 }
     
-case class Delta(dx: Pos, dy: Pos, dz: Pos, de: Pos) {
+case class Delta(dx: Pos, dy: Pos, dz: Pos, de: Pos, before: XYZE, after: XYZE) {
+    def isNotZero: Boolean = dx.isNotZero || dy.isNotZero || dz.isNotZero || de.isNotZero
     def isXyzMove: Boolean = dx.isNotZero || dy.isNotZero || dz.isNotZero
     def isExtrusion: Boolean = de > Pos.zero
     def isRetraction: Boolean = de < Pos.zero
@@ -159,7 +160,7 @@ case class XYZE(x: Pos = Pos.undefined, y: Pos = Pos.undefined, z: Pos = Pos.und
             e = Borked.inCtx("e")(e.move(moveMode, other.e))
         )
     
-    def -(other: XYZE): Delta = Delta(dx = x - other.x, dy = y - other.y, dz = z - other.z, de = e - other.e)
+    def -(other: XYZE): Delta = Delta(dx = x - other.x, dy = y - other.y, dz = z - other.z, de = e - other.e, before = this, after = other)
 }
 
 class GCodeFile(val filename: String) {
@@ -180,12 +181,14 @@ class ParsedLine(lineWithIndex: (String, Int)) {
     def isNotEmpty = trimmedLine != ""
 }   
 
-class Xyzes(gcodeFile: GCodeFile) {
-    printInfo("Searching for xyze states...")
+class Deltas(gcodeFile: GCodeFile) {
+    printInfo("Calculating deltas...")
 
-    private var xyze = XYZE()
-    private var moveModeOpt: Option[MoveMode] = None
-    private var ignoredCmds = 0
+    private[this] val builder = Vector.newBuilder[Delta]
+    private[this] var xyze = XYZE()
+    private[this] var moveModeOpt: Option[MoveMode] = None
+    private[this] var initialized: Boolean = false
+    private[this] var ignoredCmds = 0
 
     private def parseXyze(args: Seq[String], ignoreChars: Set[Char]): XYZE = {
         args.foldLeft(XYZE.undefined) { (xyze, arg) =>
@@ -204,6 +207,8 @@ class Xyzes(gcodeFile: GCodeFile) {
     
     for (parsedLine <- gcodeFile.lines.zipWithIndex.map(new ParsedLine(_)) if parsedLine.isNotEmpty) {
         Borked.inCtx(s"Line ${parsedLine.index}: ${parsedLine.cmd}") {
+            var prevXyze = xyze // It's 'var' because we update it in case it's not a real move...
+            
             parsedLine.cmd.toUpperCase match {
                 case "M190" | "M104" | "M109" | "G21" | "M82" | "M107" | "M117" | "M205" | "M140" | "M106" | "M84" =>
                     ignoredCmds += 1
@@ -248,15 +253,27 @@ class Xyzes(gcodeFile: GCodeFile) {
                         throw Borked("No arguments!")
                     } else {
                         xyze = xyze.move(MoveMode.Abs, parseXyze(parsedLine.args, ignoreChars = Set.empty[Char]))
+                        prevXyze = xyze // So delta is going ot be zero
                     }
 
                 case cmd =>
                     throw Borked("Unknown command!")
+            } 
+
+            if (initialized) {
+                val delta = xyze - prevXyze
+                if (delta.isNotZero) {
+                    builder += delta
+                }
+            } else {
+                initialized = xyze.isDefined;
             }
         }
     }
 
     printInfo("... commands ignored: ", STRESS(ignoredCmds))
+
+    val list: Vector[Delta] = builder.result
 }
 
 object AkGCodeApp extends App {
@@ -264,6 +281,6 @@ object AkGCodeApp extends App {
     
     val conf = new Conf(args)
     val gcodeFile = new GCodeFile(conf.inputFilename.toOption.get)
-    val xyzes = new Xyzes(gcodeFile)
+    val deltas = new Deltas(gcodeFile)
 }
     
