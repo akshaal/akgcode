@@ -1,5 +1,6 @@
 // Evgeny "Akshaal" Chukreev, 2017
 
+import scala.collection.immutable.HashMap
 import scala.util.Try
 import scala.util.control.NonFatal
 import org.apache.commons.io.IOUtils
@@ -137,7 +138,7 @@ object Pos {
     def fromString(s: String): Pos = fromDouble(s.toDouble)
 }
     
-case class Delta(dx: Pos, dy: Pos, dz: Pos, de: Pos, before: XYZE, after: XYZE) {
+case class Delta(dx: Pos, dy: Pos, dz: Pos, de: Pos, before: XYZE, after: XYZE, parsedLineOpt: Option[ParsedLine] = None) {
     def isNotZero: Boolean = dx.isNotZero || dy.isNotZero || dz.isNotZero || de.isNotZero
     def isXyzMove: Boolean = dx.isNotZero || dy.isNotZero || dz.isNotZero
     def isExtrusion: Boolean = de > Pos.zero
@@ -161,6 +162,10 @@ case class XYZE(x: Pos = Pos.undefined, y: Pos = Pos.undefined, z: Pos = Pos.und
         )
     
     def -(other: XYZE): Delta = Delta(dx = x - other.x, dy = y - other.y, dz = z - other.z, de = e - other.e, before = this, after = other)
+
+    // Avoid recalculation
+    private[this] val hm = super.hashCode
+    override def hashCode = hm
 }
 
 class GCodeFile(val filename: String) {
@@ -261,7 +266,7 @@ class Deltas(gcodeFile: GCodeFile) {
             } 
 
             if (initialized) {
-                val delta = xyze - prevXyze
+                val delta = (xyze - prevXyze).copy(parsedLineOpt = Some(parsedLine))
                 if (delta.isNotZero) {
                     builder += delta
                 }
@@ -276,11 +281,21 @@ class Deltas(gcodeFile: GCodeFile) {
     val list: Vector[Delta] = builder.result
 }
 
+case class LayerPosInfo(parsedLine: ParsedLine, delta: Delta)
+
+class Layer(val infoByXyze: HashMap[XYZE, LayerPosInfo]) {
+}
+
+class Layers(val deltas: Deltas) {
+    val layerByZ: HashMap[Int, Layer] = HashMap.empty // TODO
+}
+
 object AkGCodeApp extends App {
     printSep()
     
     val conf = new Conf(args)
     val gcodeFile = new GCodeFile(conf.inputFilename.toOption.get)
     val deltas = new Deltas(gcodeFile)
+    val layers = new Layers(deltas)
 }
     
