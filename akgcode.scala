@@ -59,8 +59,8 @@ object Borked {
     def inCtx[T](ctxMsg: => String)(code: => T): T = {
         try code catch {
             case NonFatal(exc) =>
-                if (exc.getMessage == null) throw new Borked(ctxMsg, exc)
-                else throw new Borked(ctxMsg + ": " + exc.getMessage, exc)
+                if (exc.getMessage == null) throw Borked(ctxMsg, exc)
+                else throw Borked(ctxMsg + ": " + exc.getMessage, exc)
         }
     }
 }
@@ -134,6 +134,7 @@ object Pos {
     val zero = Pos(0)
     
     def fromDouble(d: Double): Pos = Pos(Math.round((d * SCALE).toFloat))
+    def fromString(s: String): Pos = fromDouble(s.toDouble)
 }
     
 case class Delta(dx: Pos, dy: Pos, dz: Pos, de: Pos) {
@@ -186,6 +187,21 @@ class Xyzes(gcodeFile: GCodeFile) {
     private var moveModeOpt: Option[MoveMode] = None
     private var ignoredCmds = 0
 
+    private def parseXyze(args: Seq[String], ignoreChars: Set[Char]): XYZE = {
+        args.foldLeft(XYZE.undefined) { (xyze, arg) =>
+            Borked.inCtx(arg) {
+                arg.toUpperCase()(0) match {
+                    case 'X' =>  xyze.copy(x = Pos.fromString(arg.tail))
+                    case 'Y' =>  xyze.copy(y = Pos.fromString(arg.tail))
+                    case 'Z' =>  xyze.copy(z = Pos.fromString(arg.tail))
+                    case 'E' =>  xyze.copy(e = Pos.fromString(arg.tail))
+                    case c if ignoreChars(c) => xyze
+                    case _ => throw Borked("Unknown argument!")
+                }
+            }
+        }
+    }
+    
     for (parsedLine <- gcodeFile.lines.zipWithIndex.map(new ParsedLine(_)) if parsedLine.isNotEmpty) {
         Borked.inCtx(s"Line ${parsedLine.index}: ${parsedLine.cmd}") {
             parsedLine.cmd.toUpperCase match {
@@ -199,6 +215,7 @@ class Xyzes(gcodeFile: GCodeFile) {
                     moveModeOpt = Some(MoveMode.Rel)
 
                 case "G28" =>
+                    // Home
                     if (parsedLine.args.isEmpty) {
                         xyze = xyze.copy(x = Pos.zero, y = Pos.zero, z = Pos.zero)
                     } else {
@@ -208,33 +225,33 @@ class Xyzes(gcodeFile: GCodeFile) {
                                     case "X" | "X0" =>  xyze = xyze.copy(x = Pos.zero)
                                     case "Y" | "Y0" =>  xyze = xyze.copy(y = Pos.zero)
                                     case "Z" | "Z0" =>  xyze = xyze.copy(z = Pos.zero)
-                                    case arg => Borked("Uknown argument!")
+                                    case arg => throw Borked("Uknown argument!")
                                 }
                             }
                         }
                     }
 
-/*        elif code == "G1" or code == "G01" or code == "G0" or code == "G00":
-            # Move
-            pargs = parse_args()
+                case "G1" | "G0" | "G01" | "G00" =>
+                    // Move
+                    if (parsedLine.args.isEmpty) {
+                        throw Borked("No arguments!")
+                    } else {
+                        moveModeOpt match {
+                            case None => throw Borked("Move mode is not set!")
+                            case Some(moveMode) => xyze = xyze.move(moveMode, parseXyze(parsedLine.args, ignoreChars = Set('F')))
+                        }
+                    }
 
-            for arg in pargs:
-                if arg.startswith("X"):
-                    self.pos = self.pos.update(self.__mode, dx = float(arg[1:]))
-                elif arg.startswith("Y"):
-                    self.pos = self.pos.update(self.__mode, dy = float(arg[1:]))
-                elif arg.startswith("Z"):
-                    self.pos = self.pos.update(self.__mode, dz = float(arg[1:]))
-                elif arg.startswith("E"):
-                    self.pos = self.pos.update(self.__mode, de = float(arg[1:]))
-                elif arg.startswith("F"):
-                    pass
-                else:
-                    complain_parse(arg)
-*/
-                    
+                case "G92" =>
+                    // Set values without real move
+                    if (parsedLine.args.isEmpty) {
+                        throw Borked("No arguments!")
+                    } else {
+                        xyze = xyze.move(MoveMode.Abs, parseXyze(parsedLine.args, ignoreChars = Set.empty[Char]))
+                    }
+
                 case cmd =>
-                    throw Borked("Uknown command!")
+                    throw Borked("Unknown command!")
             }
         }
     }
