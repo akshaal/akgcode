@@ -137,32 +137,63 @@ object Pos {
     def fromDouble(d: Double): Pos = Pos(Math.round((d * SCALE).toFloat))
     def fromString(s: String): Pos = fromDouble(s.toDouble)
 }
+        
+case class XyzDelta(before: XYZ, after: XYZ) {
+    val dx: Pos = after.x - before.x
+    val dy: Pos = after.y - before.y
+    val dz: Pos = after.z - before.z
+    def isNotZero: Boolean = dx.isNotZero || dy.isNotZero || dz.isNotZero
+}
     
-case class Delta(dx: Pos, dy: Pos, dz: Pos, de: Pos, before: XYZE, after: XYZE, parsedLineOpt: Option[ParsedLine] = None) {
-    def isNotZero: Boolean = dx.isNotZero || dy.isNotZero || dz.isNotZero || de.isNotZero
-    def isXyzMove: Boolean = dx.isNotZero || dy.isNotZero || dz.isNotZero
+case class XyzeDelta(before: XYZE, after: XYZE, parsedLineOpt: Option[ParsedLine] = None) {
+    val xyzDelta: XyzDelta = XyzDelta(before.xyz, after.xyz)
+    val de: Pos = after.e - before.e
+    
+    def isNotZero: Boolean = xyzDelta.isNotZero || de.isNotZero
+    def isXyzMove: Boolean = xyzDelta.isNotZero
     def isExtrusion: Boolean = de > Pos.zero
     def isRetraction: Boolean = de < Pos.zero
 }
+    
+object XYZ {
+    val undefined = XYZ()
+    val zero = XYZ(x = Pos.zero, y = Pos.zero, z = Pos.zero)
+}
+    
+case class XYZ(x: Pos = Pos.undefined, y: Pos = Pos.undefined, z: Pos = Pos.undefined) {
+    def isDefined: Boolean = x.isDefined && y.isDefined && z.isDefined
+    def isAtHome: Boolean = x.isZero && y.isZero && z.isZero
+    
+    def move(moveMode: MoveMode, other: XYZ): XYZ =
+        XYZ(
+            x = Borked.inCtx("x")(x.move(moveMode, other.x)),
+            y = Borked.inCtx("y")(y.move(moveMode, other.y)),
+            z = Borked.inCtx("z")(z.move(moveMode, other.z))
+        )
+    
+    def -(other: XYZ): XyzDelta = XyzDelta(before = this, after = other)
         
+    // Avoid recalculation
+    private[this] val hm = super.hashCode
+    override def hashCode = hm
+}
+    
 object XYZE {
     val undefined = XYZE()
 }
     
-case class XYZE(x: Pos = Pos.undefined, y: Pos = Pos.undefined, z: Pos = Pos.undefined, e: Pos = Pos.undefined) {
-    def isDefined: Boolean = x.isDefined && y.isDefined && z.isDefined && e.isDefined
-    def isAtHome: Boolean = x.isZero && y.isZero && z.isZero
+case class XYZE(xyz: XYZ = XYZ.undefined, e: Pos = Pos.undefined) {
+    def isDefined: Boolean = xyz.isDefined && e.isDefined
+    def isAtHome: Boolean = xyz.isAtHome
     
     def move(moveMode: MoveMode, other: XYZE): XYZE =
         XYZE(
-            x = Borked.inCtx("x")(x.move(moveMode, other.x)),
-            y = Borked.inCtx("y")(y.move(moveMode, other.y)),
-            z = Borked.inCtx("z")(z.move(moveMode, other.z)),
+            xyz = Borked.inCtx("xyz")(xyz.move(moveMode, other.xyz)),
             e = Borked.inCtx("e")(e.move(moveMode, other.e))
         )
     
-    def -(other: XYZE): Delta = Delta(dx = x - other.x, dy = y - other.y, dz = z - other.z, de = e - other.e, before = this, after = other)
-
+    def -(other: XYZE): XyzeDelta = XyzeDelta(before = this, after = other)
+        
     // Avoid recalculation
     private[this] val hm = super.hashCode
     override def hashCode = hm
@@ -170,7 +201,7 @@ case class XYZE(x: Pos = Pos.undefined, y: Pos = Pos.undefined, z: Pos = Pos.und
 
 class GCodeFile(val filename: String) {
     printInfo("Reading GCode file: ", STRESS(filename))
-
+    
     val lines: Vector[String] = scala.io.Source.fromFile("test.gcode").getLines.toVector
     printInfo("... done reading gcode file, it contains ", STRESS(lines.size), " lines")
 }
@@ -188,20 +219,20 @@ class ParsedLine(lineWithIndex: (String, Int)) {
 
 class Deltas(gcodeFile: GCodeFile) {
     printInfo("Calculating deltas...")
-
-    private[this] val builder = Vector.newBuilder[Delta]
+        
+    private[this] val builder = Vector.newBuilder[XyzeDelta]
     private[this] var xyze = XYZE()
     private[this] var moveModeOpt: Option[MoveMode] = None
     private[this] var initialized: Boolean = false
     private[this] var ignoredCmds = 0
-
+        
     private def parseXyze(args: Seq[String], ignoreChars: Set[Char]): XYZE = {
         args.foldLeft(XYZE.undefined) { (xyze, arg) =>
             Borked.inCtx(arg) {
                 arg.toUpperCase()(0) match {
-                    case 'X' =>  xyze.copy(x = Pos.fromString(arg.tail))
-                    case 'Y' =>  xyze.copy(y = Pos.fromString(arg.tail))
-                    case 'Z' =>  xyze.copy(z = Pos.fromString(arg.tail))
+                    case 'X' =>  xyze.copy(xyz = xyze.xyz.copy(x = Pos.fromString(arg.tail)))
+                    case 'Y' =>  xyze.copy(xyz = xyze.xyz.copy(y = Pos.fromString(arg.tail)))
+                    case 'Z' =>  xyze.copy(xyz = xyze.xyz.copy(z = Pos.fromString(arg.tail)))
                     case 'E' =>  xyze.copy(e = Pos.fromString(arg.tail))
                     case c if ignoreChars(c) => xyze
                     case _ => throw Borked("Unknown argument!")
@@ -217,30 +248,30 @@ class Deltas(gcodeFile: GCodeFile) {
             parsedLine.cmd.toUpperCase match {
                 case "M190" | "M104" | "M109" | "G21" | "M82" | "M107" | "M117" | "M205" | "M140" | "M106" | "M84" =>
                     ignoredCmds += 1
-
+                    
                 case "G90" =>
                     moveModeOpt = Some(MoveMode.Abs)
-
+                    
                 case "G91" =>
                     moveModeOpt = Some(MoveMode.Rel)
 
                 case "G28" =>
                     // Home
                     if (parsedLine.args.isEmpty) {
-                        xyze = xyze.copy(x = Pos.zero, y = Pos.zero, z = Pos.zero)
+                        xyze = xyze.copy(xyz = XYZ.zero)
                     } else {
                         for (arg <- parsedLine.args) {
                             Borked.inCtx(arg) {
                                 arg match {
-                                    case "X" | "X0" =>  xyze = xyze.copy(x = Pos.zero)
-                                    case "Y" | "Y0" =>  xyze = xyze.copy(y = Pos.zero)
-                                    case "Z" | "Z0" =>  xyze = xyze.copy(z = Pos.zero)
+                                    case "X" | "X0" =>  xyze = xyze.copy(xyz = xyze.xyz.copy(x = Pos.zero))
+                                    case "Y" | "Y0" =>  xyze = xyze.copy(xyz = xyze.xyz.copy(y = Pos.zero))
+                                    case "Z" | "Z0" =>  xyze = xyze.copy(xyz = xyze.xyz.copy(z = Pos.zero))
                                     case arg => throw Borked("Uknown argument!")
                                 }
                             }
                         }
                     }
-
+                    
                 case "G1" | "G0" | "G01" | "G00" =>
                     // Move
                     if (parsedLine.args.isEmpty) {
@@ -251,7 +282,7 @@ class Deltas(gcodeFile: GCodeFile) {
                             case Some(moveMode) => xyze = xyze.move(moveMode, parseXyze(parsedLine.args, ignoreChars = Set('F')))
                         }
                     }
-
+                        
                 case "G92" =>
                     // Set values without real move
                     if (parsedLine.args.isEmpty) {
@@ -260,11 +291,11 @@ class Deltas(gcodeFile: GCodeFile) {
                         xyze = xyze.move(MoveMode.Abs, parseXyze(parsedLine.args, ignoreChars = Set.empty[Char]))
                         prevXyze = xyze // So delta is going ot be zero
                     }
-
+                    
                 case cmd =>
                     throw Borked("Unknown command!")
             } 
-
+                
             if (initialized) {
                 val delta = (xyze - prevXyze).copy(parsedLineOpt = Some(parsedLine))
                 if (delta.isNotZero) {
@@ -275,21 +306,21 @@ class Deltas(gcodeFile: GCodeFile) {
             }
         }
     }
-
+        
     printInfo("... commands ignored: ", STRESS(ignoredCmds))
-
-    val list: Vector[Delta] = builder.result
+    
+    val list: Vector[XyzeDelta] = builder.result
 }
-
-case class LayerPosInfo(parsedLine: ParsedLine, delta: Delta)
-
-class Layer(val infoByXyze: HashMap[XYZE, LayerPosInfo]) {
+    
+case class LayerPosInfo(arrivals: Vector[XyzeDelta])
+    
+class Layer(val infoByXyz: HashMap[XYZ, LayerPosInfo]) {
 }
-
+    
 class Layers(val deltas: Deltas) {
-    val layerByZ: HashMap[Int, Layer] = HashMap.empty // TODO
+    val layerByZ: HashMap[Int, Layer] = HashMap.empty // Deltas.list.groupBy(_.).empty // TODO
 }
-
+    
 object AkGCodeApp extends App {
     printSep()
     
