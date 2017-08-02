@@ -199,24 +199,26 @@ case class XYZE(xyz: XYZ = XYZ.undefined, e: Pos = Pos.undefined) {
     override def hashCode = hm
 }
 
-class GCodeFile(val filename: String) {
-    printInfo("Reading GCode file: ", STRESS(filename))
-    
-    val lines: Vector[String] = scala.io.Source.fromFile("test.gcode").getLines.toVector
-    printInfo("... done reading gcode file, it contains ", STRESS(lines.size), " lines")
-}
-
 class ParsedLine(lineWithIndex: (String, Int)) {
     val (line, index): (String, Int) = lineWithIndex
     val trimmedLine: String = line.split(";")(0).trim
-
+        
     val tokens: Seq[String] = trimmedLine.split(" ").map(_.trim).filter(_ != "")
     val cmd: String = if (tokens.isEmpty) "" else tokens(0)
     val args: Seq[String] = tokens drop 1
     
     def isNotEmpty = trimmedLine != ""
 }   
-
+    
+class GCodeFile(val filename: String) {
+    printInfo("Reading GCode file: ", STRESS(filename))
+    
+    private[this] val lines: Vector[String] = scala.io.Source.fromFile("test.gcode").getLines.toVector
+    printInfo("... done reading gcode file, it contains ", STRESS(lines.size), " lines")
+    
+    val parsedLines: Vector[ParsedLine] = lines.zipWithIndex.map(new ParsedLine(_))
+}
+    
 class Deltas(gcodeFile: GCodeFile) {
     printInfo("Calculating deltas...")
         
@@ -241,7 +243,7 @@ class Deltas(gcodeFile: GCodeFile) {
         }
     }
     
-    for (parsedLine <- gcodeFile.lines.zipWithIndex.map(new ParsedLine(_)) if parsedLine.isNotEmpty) {
+    for (parsedLine <- gcodeFile.parsedLines if parsedLine.isNotEmpty) {
         Borked.inCtx(s"Line ${parsedLine.index}: ${parsedLine.cmd}") {
             var prevXyze = xyze // It's 'var' because we update it in case it's not a real move...
             
