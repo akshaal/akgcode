@@ -1,6 +1,5 @@
 // Evgeny "Akshaal" Chukreev, 2017
 
-import scala.collection.immutable.HashMap
 import scala.util.Try
 import scala.util.control.NonFatal
 import org.apache.commons.io.IOUtils
@@ -316,11 +315,21 @@ class Deltas(gcodeFile: GCodeFile) {
     
 case class LayerPosInfo(arrivals: Vector[XyzeDelta])
     
-class Layer(val infoByXyz: HashMap[XYZ, LayerPosInfo]) {
+class Layer(arrivals: Vector[XyzeDelta]) {
+    private[this] val arrivalsToXyz: Map[XYZ, Vector[XyzeDelta]] = arrivals.groupBy(_.after.xyz)
+    
+    val infoByXyz: Map[XYZ, LayerPosInfo] = arrivalsToXyz map {
+        case (xyz, arrivals) => xyz -> new LayerPosInfo(arrivals)
+    }
 }
     
-class Layers(val deltas: Deltas) {
-    val layerByZ: HashMap[Int, Layer] = HashMap.empty // Deltas.list.groupBy(_.).empty // TODO
+class Layers(deltas: Deltas) {
+    private[this] val arrivalsToZ: Map[Pos, Vector[XyzeDelta]] =
+        deltas.list.groupBy(_.after.xyz.z)
+ 
+    val layerByZ: Map[Pos, Layer] = arrivalsToZ map {
+        case (z, arrivals) => z -> new Layer(arrivals)
+    }
 }
     
 object AkGCodeApp extends App {
