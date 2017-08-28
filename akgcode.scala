@@ -144,6 +144,12 @@ case class XyzDelta(before: XYZ, after: XYZ) {
     val dy: Pos = after.y - before.y
     val dz: Pos = after.z - before.z
     def isNotZero: Boolean = dx.isNotZero || dy.isNotZero || dz.isNotZero
+
+    //
+    // yd = abs(y2 - y1)
+    // xd = abs(x2 - x1)
+    // o = math.sqrt((MAX_BED_WIDTH-x2)*(MAX_BED_WIDTH-x2) + (MAX_BED_DEPTH-y2)*(MAX_BED_DEPTH-y2))
+    // val weight: Double = yd * 10000000 + o * 1000 + xd
 }
     
 case class XyzeDelta(before: XYZE, after: XYZE, parsedLineOpt: Option[ParsedLine] = None) {
