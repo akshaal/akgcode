@@ -8,7 +8,7 @@ JARS_DIR="$THIS_SCRIPT_DIR"
 CACHE_DIR="$THIS_SCRIPT_DIR/cache"
 OUR_JAR_FILE="$CACHE_DIR/akgcode.jar"
 
-CLASSPATH="$JARS_DIR/scallop_2.12-3.0.3.jar:$JARS_DIR/commons-io-2.5.jar"
+CLASSPATH="$JARS_DIR/scallop_2.12-3.0.3.jar:$JARS_DIR/commons-io-2.5.jar:$JARS_DIR/jgrapht-core-1.0.1.jar"
 
 mkdir -p "$CACHE_DIR"
 
@@ -26,6 +26,9 @@ fi
 scala -classpath "$CLASSPATH"\
        -J-Xmx8G \
        -J-server \
+       -J-XX:+AggressiveOpts \
+       -J-XX:+UseParNewGC \
+       -J-XX:+UseConcMarkSweepGC \
        -deprecation \
        "$OUR_JAR_FILE" \
        "$@"
