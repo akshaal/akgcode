@@ -344,14 +344,25 @@ class Layers(deltas: Deltas) {
 }
     
 class MovesGraph(layers: Layers) {
-    import org.jgrapht.graph.DefaultDirectedGraph
+    import org.jgrapht.graph.DefaultDirectedWeightedGraph
     import org.jgrapht.graph.DefaultEdge
     
     printInfo("Constructing moves graph...")
     
-    private val graph = new DefaultDirectedGraph[XYZ, DefaultEdge](classOf[DefaultEdge])
+    private val graph = new DefaultDirectedWeightedGraph[XYZ, DefaultEdge](classOf[DefaultEdge])
     graph.addVertex(XYZ.start)
     graph.addVertex(XYZ.finish)
+        
+    /*
+     graph.setEdgeWeight(graph.addEdge(sourceXyz, targetXyz), weight)
+     
+      System.out.println("Shortest path from i to c:");
+        DijkstraShortestPath<String, DefaultEdge> dijkstraAlg =
+            new DijkstraShortestPath<>(directedGraph);
+        SingleSourcePaths<String, DefaultEdge> iPaths = dijkstraAlg.getPaths("i");
+        System.out.println(iPaths.getPath("c") + "\n");
+     
+     */
     
     printInfo("... done constructing moves graph")
 }
