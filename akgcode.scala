@@ -131,6 +131,8 @@ object Pos {
     val SCALE = 1000
     
     val undefined = Pos(-100000)
+    val start = Pos(-200000)
+    val finish = Pos(-300000)
     val zero = Pos(0)
     
     def fromDouble(d: Double): Pos = Pos(Math.round((d * SCALE).toFloat))
@@ -157,6 +159,8 @@ case class XyzeDelta(before: XYZE, after: XYZE, parsedLineOpt: Option[ParsedLine
 object XYZ {
     val undefined = XYZ()
     val zero = XYZ(x = Pos.zero, y = Pos.zero, z = Pos.zero)
+    val start = XYZ(x = Pos.start, y = Pos.start, z = Pos.start)
+    val finish = XYZ(x = Pos.finish, y = Pos.finish, z = Pos.finish)
 }
     
 case class XYZ(x: Pos = Pos.undefined, y: Pos = Pos.undefined, z: Pos = Pos.undefined) {
@@ -312,7 +316,7 @@ class Deltas(gcodeFile: GCodeFile) {
         }
     }
         
-    printInfo("... commands ignored: ", STRESS(ignoredCmds))
+    printInfo("... done calculating deltas. commands ignored: ", STRESS(ignoredCmds))
     
     val list: Vector[XyzeDelta] = builder.result
 }
@@ -328,11 +332,28 @@ class Layer(arrivals: Vector[XyzeDelta]) {
 }
     
 class Layers(deltas: Deltas) {
+    printInfo("Constructing layers...")
+    
     private[this] val arrivalsToZ: Map[Pos, Vector[XyzeDelta]] = deltas.list.groupBy(_.after.xyz.z)
  
     val layerByZ: Map[Pos, Layer] = arrivalsToZ map {
         case (z, arrivals) => z -> new Layer(arrivals)
     }
+        
+    printInfo("... done constructing layers")
+}
+    
+class MovesGraph(layers: Layers) {
+    import org.jgrapht.graph.DefaultDirectedGraph
+    import org.jgrapht.graph.DefaultEdge
+    
+    printInfo("Constructing moves graph...")
+    
+    private val graph = new DefaultDirectedGraph[XYZ, DefaultEdge](classOf[DefaultEdge])
+    graph.addVertex(XYZ.start)
+    graph.addVertex(XYZ.finish)
+    
+    printInfo("... done constructing moves graph")
 }
     
 object AkGCodeApp extends App {
@@ -342,5 +363,6 @@ object AkGCodeApp extends App {
     val gcodeFile = new GCodeFile(conf.inputFilename.toOption.get)
     val deltas = new Deltas(gcodeFile)
     val layers = new Layers(deltas)
+    val movesGraph = new MovesGraph(layers)
 }
     
