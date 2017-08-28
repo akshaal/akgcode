@@ -324,8 +324,7 @@ class Layer(arrivals: Vector[XyzeDelta]) {
 }
     
 class Layers(deltas: Deltas) {
-    private[this] val arrivalsToZ: Map[Pos, Vector[XyzeDelta]] =
-        deltas.list.groupBy(_.after.xyz.z)
+    private[this] val arrivalsToZ: Map[Pos, Vector[XyzeDelta]] = deltas.list.groupBy(_.after.xyz.z)
  
     val layerByZ: Map[Pos, Layer] = arrivalsToZ map {
         case (z, arrivals) => z -> new Layer(arrivals)
