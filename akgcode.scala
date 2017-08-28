@@ -212,10 +212,14 @@ class ParsedLine(lineWithIndex: (String, Int)) {
 class GCodeFile(val filename: String) {
     printInfo("Reading GCode file: ", STRESS(filename))
     
-    private[this] val lines: Vector[String] = scala.io.Source.fromFile("test.gcode").getLines.toVector
-    printInfo("... done reading gcode file, it contains ", STRESS(lines.size), " lines")
+    val parsedLines: Vector[ParsedLine] =
+        scala.io.Source.fromFile(filename)
+            .getLines
+            .zipWithIndex
+            .map(new ParsedLine(_))
+            .toVector
     
-    val parsedLines: Vector[ParsedLine] = lines.zipWithIndex.map(new ParsedLine(_))
+    printInfo("... done reading gcode file, it contains ", STRESS(parsedLines.size), " lines")
 }
     
 class Deltas(gcodeFile: GCodeFile) {
@@ -247,7 +251,7 @@ class Deltas(gcodeFile: GCodeFile) {
             var prevXyze = xyze // It's 'var' because we update it in case it's not a real move...
             
             parsedLine.cmd.toUpperCase match {
-                case "M190" | "M104" | "M109" | "G21" | "M82" | "M107" | "M117" | "M205" | "M140" | "M106" | "M84" =>
+                case "M190" | "M104" | "M109" | "G21" | "M82" | "M107" | "M117" | "M205" | "M140" | "M106" | "M84" | "G29" | "M420" =>
                     ignoredCmds += 1
                     
                 case "G90" =>
@@ -255,7 +259,7 @@ class Deltas(gcodeFile: GCodeFile) {
                     
                 case "G91" =>
                     moveModeOpt = Some(MoveMode.Rel)
-
+                        
                 case "G28" =>
                     // Home
                     if (parsedLine.args.isEmpty) {

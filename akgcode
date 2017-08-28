@@ -24,6 +24,8 @@ if test "(" "!" "(" "-e" "$OUR_JAR_FILE"  ")" ")"  -o "(" "$SRC_DIR/akgcode.scal
 fi
 
 scala -classpath "$CLASSPATH"\
+       -J-Xmx8G \
+       -J-server \
        -deprecation \
        "$OUR_JAR_FILE" \
        "$@"
