@@ -6,6 +6,13 @@ import org.apache.commons.io.IOUtils
 import org.rogach.scallop.{ScallopConf, ScallopOption}
 import org.rogach.scallop.exceptions.RequiredOptionNotFound
     
+object MagicConsts {
+    val maxXCm: Int = 30
+    val maxYCm: Int = 30
+    val cornerWeightK: Double = 1
+    val dyWeightK: Double = 10
+}
+    
 object AkScriptUtils {
     var verbose: Boolean = false
     
@@ -135,21 +142,35 @@ object Pos {
     val finish = Pos(-300000)
     val zero = Pos(0)
     
+    val maxX = Pos(MagicConsts.maxXCm)
+    val maxY = Pos(MagicConsts.maxYCm)
+    
     def fromDouble(d: Double): Pos = Pos(Math.round((d * SCALE).toFloat))
     def fromString(s: String): Pos = fromDouble(s.toDouble)
 }
         
+object XyzDelta {
+    private val maxXdouble = Pos.maxX.value.toDouble
+    private val maxYdouble = Pos.maxY.value.toDouble
+        
+    private val cornerWeightK: Double = MagicConsts.cornerWeightK * maxYdouble
+    private val dyWeightK: Double = {
+        cornerWeightK * MagicConsts.dyWeightK * Math.sqrt(XyzDelta.maxXdouble * XyzDelta.maxXdouble + XyzDelta.maxYdouble * XyzDelta.maxYdouble + 1)
+    }
+}
+    
 case class XyzDelta(before: XYZ, after: XYZ) {
     val dx: Pos = after.x - before.x
     val dy: Pos = after.y - before.y
     val dz: Pos = after.z - before.z
     def isNotZero: Boolean = dx.isNotZero || dy.isNotZero || dz.isNotZero
-
-    //
-    // yd = abs(y2 - y1)
-    // xd = abs(x2 - x1)
-    // o = math.sqrt((MAX_BED_WIDTH-x2)*(MAX_BED_WIDTH-x2) + (MAX_BED_DEPTH-y2)*(MAX_BED_DEPTH-y2))
-    // val weight: Double = yd * 10000000 + o * 1000 + xd
+    
+    val weigth: Double = {
+        val ox = XyzDelta.maxXdouble - after.x.value.toDouble
+        val oy = XyzDelta.maxYdouble - after.y.value.toDouble
+        val o = Math.sqrt(ox * ox + oy * oy)
+        dy.value.abs.toDouble * XyzDelta.dyWeightK + o * XyzDelta.cornerWeightK + dx.value.abs.toDouble
+    }
 }
     
 case class XyzeDelta(before: XYZE, after: XYZE, parsedLineOpt: Option[ParsedLine] = None) {
