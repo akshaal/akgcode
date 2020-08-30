@@ -1,0 +1,3 @@
+# akgcode
+
+Something about G-Code analysis that would augument STL files with command to take picture in such a way that bed looks stationary on the printers with moving bed. Or something like this....
